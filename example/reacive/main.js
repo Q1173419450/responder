@@ -53,15 +53,15 @@ import { effect, reactive } from '../../lib/mini-vue.esm.js';
 // obj.bar = NaN;
 
 /* 继承 */
-const obj1 = {};
-const proto = { bar: 1 }
-const child = reactive(obj1);
-const parent = reactive(proto);
-Object.setPrototypeOf(child, parent);
+// const obj1 = {};
+// const proto = { bar: 1 }
+// const child = reactive(obj1);
+// const parent = reactive(proto);
+// Object.setPrototypeOf(child, parent);
 
-effect (() => {
-  console.log(child.bar);
-})
+// effect (() => {
+//   console.log(child.bar);
+// })
 
-child.bar = 2;
+// child.bar = 2;
 

@@ -1,10 +1,25 @@
 import { track, trigger } from "./effect";
+import { reactive, readonly } from "./reactive";
 
-function createGetter() {
+function createGetter(isReadonly = false, isShallow = false) {
   return function get(target, key, receiver) {
     if (key === 'raw') return target; // 原型相关
     let res = Reflect.get(target, key, receiver);
-    track(target, key);
+
+    /* 第一层使用 reactive */
+    if (isShallow) {
+      return res;
+    }
+  
+    /* 全部使用 readonly、reactive */
+    if (res !== null && typeof res === "object") {
+      return isReadonly ? readonly(res) : reactive(res);
+    }
+
+    /* reactive 才需要依赖收集 */
+    if(!isReadonly) {
+      track(target, key);
+    }
     return res;
   };
 }
@@ -20,7 +35,7 @@ function createSetter() {
     const oldVal = target[key];
     const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD
 
-    console.log(target, receiver.raw, 'receiver');
+    // console.log(target, receiver.raw, 'receiver');
     let res = Reflect.set(target, key, value, receiver);
     /* oldVal !== value 不适用 NaN */
     /* fix：添加原型相关 */
@@ -33,9 +48,6 @@ function createSetter() {
     return res;
   };
 }
-
-const get = createGetter();
-const set = createSetter();
 
 /* in 操作: 使用 has */
 function has(target, key) {
@@ -60,8 +72,9 @@ function deleteProperty(target, key) {
   return res;
 }
 
-
-
+/* reactive */
+const get = createGetter();
+const set = createSetter();
 export const mutableHandlers = {
   get,
   set,
@@ -69,3 +82,37 @@ export const mutableHandlers = {
   has,
   ownKeys
 };
+
+/* shallowReactive */
+const shallowGet = createGetter(false, true)
+const shallowSet = createSetter()
+export const shallowReactiveHandlers = Object.assign({}, mutableHandlers, {
+  get: shallowGet,
+  set: shallowSet
+})
+
+/* readonly */
+const readonlyGet = createGetter(true);
+export const readonlyHandlers = {
+  get: readonlyGet,
+  set(target, key) {
+    console.warn(
+      `Set operation on key "${String(key)}" failed: target is readonly.`,
+      target
+    )
+    return true
+  },
+  deleteProperty(target, key) {
+    console.warn(
+      `Delete operation on key "${String(key)}" failed: target is readonly.`,
+      target
+    )
+    return true
+  }
+}
+
+/* shallowReadOnly */
+const shallowReadonlyGet  = createGetter(true, true);
+export const shallowReadonlyHandlers = Object.assign({}, readonlyHandlers, {
+  get: shallowReadonlyGet,
+});
