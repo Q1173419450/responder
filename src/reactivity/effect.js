@@ -98,7 +98,7 @@ export function trigger(target, key, type) {
     }
   })
   
-  console.log(target, key, type);
+  // console.log(target, key, type);
   /* for...in add、DELETE 操作 */
   if (type === TriggerType.ADD || type === TriggerType.DELETE) {
     const iterateEffects = depsMap.get(ITERATE_KEY)
