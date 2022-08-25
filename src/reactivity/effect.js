@@ -1,3 +1,5 @@
+import { ITERATE_KEY, TriggerType } from "./baseHandlers";
+
 let activeEffect = void 0;
 let shouldTrack = false;
 
@@ -83,12 +85,31 @@ export function trackEffect(dep) {
   为什么要发布
   数据模型：xxx？
 */
-export function trigger(target, key) {
+export function trigger(target, key, type) {
   let depsMap = targetMap.get(target);
   if (!depsMap) return;
   let deps = depsMap.get(key);
-  if (!deps) return;
-  triggerEffects(deps);
+  
+  /* 添加新的 effect */
+  const effectToRun = new Set();
+  deps && deps.forEach(effectFn => {
+    if (effectFn !== activeEffect) {
+      effectToRun.add(effectFn);
+    }
+  })
+  
+  console.log(target, key, type);
+  /* for...in add、DELETE 操作 */
+  if (type === TriggerType.ADD || type === TriggerType.DELETE) {
+    const iterateEffects = depsMap.get(ITERATE_KEY)
+    iterateEffects && iterateEffects.forEach(effectFn => {
+      if (effectFn !== activeEffect) {
+        effectToRun.add(effectFn);
+      }
+    })
+  }
+
+  triggerEffects(effectToRun, type);
 }
 
 /* 
