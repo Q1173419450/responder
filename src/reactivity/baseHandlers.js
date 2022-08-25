@@ -1,8 +1,9 @@
 import { track, trigger } from "./effect";
 
 function createGetter() {
-  return function get(target, key) {
-    let res = Reflect.get(target, key);
+  return function get(target, key, receiver) {
+    if (key === 'raw') return target; // 原型相关
+    let res = Reflect.get(target, key, receiver);
     track(target, key);
     return res;
   };
@@ -15,12 +16,20 @@ export const TriggerType = {
 }
 
 function createSetter() {
-  return function set(target, key, value) {
+  return function set(target, key, value, receiver) {
+    const oldVal = target[key];
     const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD
 
-    // receiver
-    let res = Reflect.set(target, key, value);
-    trigger(target, key, type);
+    console.log(target, receiver.raw, 'receiver');
+    let res = Reflect.set(target, key, value, receiver);
+    /* oldVal !== value 不适用 NaN */
+    /* fix：添加原型相关 */
+    if(target === receiver.raw) {
+      /* fix: NaN */
+      if (oldVal !== value && (oldVal === oldVal || value === value)) {
+        trigger(target, key, type);
+      }
+    }
     return res;
   };
 }
