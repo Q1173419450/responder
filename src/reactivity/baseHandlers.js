@@ -20,7 +20,7 @@ function createSetter() {
     const oldVal = target[key];
     const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerType.SET : TriggerType.ADD
 
-    console.log(target, receiver.raw, 'receiver');
+    console.log(target, JSON.stringify(receiver.raw), 'receiver');
     let res = Reflect.set(target, key, value, receiver);
     /* oldVal !== value 不适用 NaN */
     /* fix：添加原型相关 */
