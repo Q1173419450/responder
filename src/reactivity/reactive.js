@@ -5,8 +5,15 @@ import {
   shallowReadonlyHandlers,
 } from "./baseHandlers";
 
+const reactiveMap = new Map();
 export function reactive(target) {
-  return createReactiveObject(target, mutableHandlers);
+  const existionProxy = reactiveMap.get(target);
+  if (existionProxy) return existionProxy
+
+  const proxy = createReactiveObject(target, mutableHandlers);
+  reactiveMap.set(target, proxy);
+
+  return proxy
 }
 
 export function shallowReactive(target) {

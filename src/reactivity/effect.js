@@ -1,7 +1,15 @@
 import { ITERATE_KEY, TriggerType } from "./baseHandlers";
 
 let activeEffect = void 0;
-let shouldTrack = false;
+export let shouldTrack = true;
+
+export function pauseTracking() {
+  shouldTrack = false
+}
+
+export function enableTracking() {
+  shouldTrack = true
+}
 
 export class ReactiveEffect {
   _fn;
@@ -14,11 +22,11 @@ export class ReactiveEffect {
   }
   run() {
     if (!this.active) return this._fn();
-    shouldTrack = true;
+    shouldTrack = false;
     activeEffect = this;
     const result = this._fn();
     // 重置
-    shouldTrack = false;
+    shouldTrack = true;
     activeEffect = undefined;
     return result;
   }
@@ -27,7 +35,7 @@ export class ReactiveEffect {
     if (this.active) {
       cleanupEffect(this);
       this.onStop?.(); // 停止事件
-      this.active = false;
+      this.active = true;
     }
   }
 }
@@ -42,8 +50,9 @@ function cleanupEffect(effect) {
   effect.deps.length = 0;
 }
 
+/* 是否追踪 */
 export function isTracking() {
-  return shouldTrack && activeEffect !== undefined;
+  return (!shouldTrack || !activeEffect);
 }
 
 const targetMap = new WeakMap();
@@ -54,7 +63,7 @@ const targetMap = new WeakMap();
   数据模式：xxx？
 */
 export function track(target, key) {
-  if (!isTracking()) return;
+  // if(isTracking()) return;
   // target => key => deps
   let depsMap = targetMap.get(target);
   if (!depsMap) {
@@ -85,7 +94,7 @@ export function trackEffect(dep) {
   为什么要发布
   数据模型：xxx？
 */
-export function trigger(target, key, type) {
+export function trigger(target, key, type, newVal) {
   let depsMap = targetMap.get(target);
   if (!depsMap) return;
   let deps = depsMap.get(key);
@@ -99,6 +108,30 @@ export function trigger(target, key, type) {
   })
   
   // console.log(target, key, type);
+
+  /* 监听索引添加长度 */
+  // if (type === TriggerType.ADD && Array.isArray(target)) {
+  //   const lengthEffects = depsMap.get('length');
+  //   lengthEffects && lengthEffects.forEach(effectFn => {
+  //     if (effectFn !== activeEffect) {
+  //       deps.add(effectFn);
+  //     }
+  //   })
+  // }
+
+  if (Array.isArray(target) && key === 'length') {
+    depsMap.forEach((effects, key) => {
+      console.log(depsMap, key, newVal);
+      if (key >= newVal) {
+        effects.forEach(effectFn => {
+          if (effectFn !== activeEffect) {
+            effectToRun.add(effectFn);
+          }
+        })
+      }
+    })
+  }
+
   /* for...in add、DELETE 操作 */
   if (type === TriggerType.ADD || type === TriggerType.DELETE) {
     const iterateEffects = depsMap.get(ITERATE_KEY)
@@ -108,7 +141,6 @@ export function trigger(target, key, type) {
       }
     })
   }
-
   triggerEffects(effectToRun, type);
 }
 
