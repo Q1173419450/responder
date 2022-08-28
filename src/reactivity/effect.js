@@ -1,4 +1,4 @@
-import { ITERATE_KEY, TriggerType } from "./baseHandlers";
+import { ITERATE_KEY, MAP_KEY_ITERATE_KEY, TriggerType } from "./baseHandlers";
 
 let activeEffect = void 0;
 export let shouldTrack = true;
@@ -121,7 +121,6 @@ export function trigger(target, key, type, newVal) {
 
   if (Array.isArray(target) && key === 'length') {
     depsMap.forEach((effects, key) => {
-      console.log(depsMap, key, newVal);
       if (key >= newVal) {
         effects.forEach(effectFn => {
           if (effectFn !== activeEffect) {
@@ -133,7 +132,9 @@ export function trigger(target, key, type, newVal) {
   }
 
   /* for...in add、DELETE 操作 */
-  if (type === TriggerType.ADD || type === TriggerType.DELETE) {
+  /* 如果目标是 Map 类型，操作为 SET 也要执行 ITERATE_KEY 的 key 值更新 */
+  const objType = Object.prototype.toString.call(target);
+  if (type === TriggerType.ADD || type === TriggerType.DELETE || (type === TriggerType.SET && objType === '[object Map]')) {
     const iterateEffects = depsMap.get(ITERATE_KEY)
     iterateEffects && iterateEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
@@ -141,6 +142,17 @@ export function trigger(target, key, type, newVal) {
       }
     })
   }
+
+  /* map.keys */
+  if ((type === TriggerType.ADD || type === TriggerType.DELETE) && objType === '[object Map]') {
+    const iterateEffects = depsMap.get(MAP_KEY_ITERATE_KEY)
+    iterateEffects && iterateEffects.forEach(effectFn => {
+      if (effectFn !== activeEffect) {
+        effectToRun.add(effectFn);
+      }
+    })
+  }
+
   triggerEffects(effectToRun, type);
 }
 

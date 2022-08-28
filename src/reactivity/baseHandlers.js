@@ -1,7 +1,13 @@
 import { enableTracking, pauseTracking, shouldTrack, track, trigger } from "./effect";
 import { reactive, readonly } from "./reactive";
 
-
+export const ITERATE_KEY = Symbol();
+export const MAP_KEY_ITERATE_KEY = Symbol();
+export const TriggerType = {
+  SET: 'SET',
+  ADD: 'ADD',
+  DELETE: 'DELETE'
+}
 /* 重写 includes、indexOf、lastIndexOf */
 const arrayInstrumentations = {};
 ['includes', 'indexOf', 'lastIndexOf'].forEach((method) => {
@@ -28,10 +34,148 @@ const arrayInstrumentations = {};
   }
 })
 
+/* 重写 map、set 方法 */
+const mutableInstrumentations = {
+  add(key) {
+    const target = this.raw
+    const hadKey = target.has(key);
+    const res = target.add(key);
+    if (!hadKey) { // 新增的值才进行收集
+      trigger(target, key, TriggerType.ADD)
+    }
+    return res;
+  },
+  delete(key) {
+    const target = this.raw;
+    const hadKey = target.has(key);
+    const res = target.delete(key);
+    if (hadKey) {
+      trigger(target, key, TriggerType.DELETE)
+    }
+    return res;
+  },
+  get(key) {
+    const target = this.raw;
+    const hadKey = target.has(key);
+    track(target, key);
+    if (hadKey) {
+      const res = target.get(key);
+      // 深层次的也需要响应式
+      return res !== null && typeof res === "object" ? reactive(res) : res;
+    }
+  },
+  set(key, value) {
+    const target = this.raw;
+    const hadKey = target.has(key);
+    const oldVal = target.get(key);
+
+    /* value 如果是 响应式数据，则会造成不必要的更新 */
+    const rawValue = value.raw || value;
+    target.set(key, rawValue);
+    if (!hadKey) {
+      // 没有值则标识为 add，因为需要触发 size 等副作用
+      trigger(target, key, TriggerType.ADD);
+    } else if (oldVal !== value && (oldVal === oldVal || value === value)) {
+      trigger(target, key, TriggerType.SET)
+    }
+  },
+  forEach(callback, thisArg) {
+    const target = this.raw;
+    track(target, ITERATE_KEY);
+    const wrap = (val) => val !== null && typeof val === "object" ? reactive(val) : val;
+    /* 只是浅层的 map 具有响应式 */
+    target.forEach((v,k) => {
+      /* forEach 深响应 & 第二个参数 */
+      callback.call(thisArg, wrap(v), wrap(k), this)
+    })
+  },
+  [Symbol.iterator]: iterationMethod,
+  entries: iterationMethod,
+  values: valuesIterationMethod,
+  keys: keysIterationMethod
+}
+
+function iterationMethod() {
+  /* 将迭代器返回 */
+  const target = this.raw;
+  const itr = target[Symbol.iterator]()
+  track(target, ITERATE_KEY);
+  const wrap = (val) => val !== null && typeof val === "object" ? reactive(val) : val;
+  return {
+    next() {
+      const { value, done } = itr.next();
+      return {
+        /* 深层次如果是对象，依旧进行遍历处理 */
+        value: value ? [wrap(value[0]), wrap(value[1])] : value,
+        done
+      }
+    },
+    /* 可迭代协议 */
+    [Symbol.iterator]() {
+      return this
+    }
+  };
+}
+
+function valuesIterationMethod() {
+  const target = this.raw;
+  const itr = target.values();
+  track(target, ITERATE_KEY);
+  const wrap = (val) => val !== null && typeof val === "object" ? reactive(val) : val;
+  return {
+    next() {
+      const { value, done } = itr.next();
+      return {
+        /* 深层次如果是对象，依旧进行遍历处理 */
+        value: wrap(value),
+        done
+      }
+    },
+    /* 可迭代协议 */
+    [Symbol.iterator]() {
+      return this
+    }
+  };
+}
+
+function keysIterationMethod() {
+  const target = this.raw;
+  const itr = target.keys();
+  track(target, MAP_KEY_ITERATE_KEY);
+  const wrap = (val) => val !== null && typeof val === "object" ? reactive(val) : val;
+  return {
+    next() {
+      const { value, done } = itr.next();
+      return {
+        /* 深层次如果是对象，依旧进行遍历处理 */
+        value: wrap(value),
+        done
+      }
+    },
+    /* 可迭代协议 */
+    [Symbol.iterator]() {
+      return this
+    }
+  };
+}
+
 function createGetter(isReadonly = false, isShallow = false) {
   return function get(target, key, receiver) {
     if (key === 'raw') return target; // 原型相关
-    let res = Reflect.get(target, key, receiver);
+
+    if (key === 'size') {
+      track(target, ITERATE_KEY);
+      return Reflect.get(target, key, target);
+    }
+
+    // let res = Reflect.get(target, key, receiver);
+    // set、map 指向原始对象，才能使用 delete 等 api
+    let res = target[key].bind(target);
+
+    /* 源码不是这样写：判断为 map 或者 set 类型 */
+    if (Object.prototype.toString.call(target) === '[object Map]' || Object.prototype.toString.call(target) === '[object Set]') {
+      return mutableInstrumentations[key]
+    }
 
     /* 修改数组操作使用重写的方法 */
     if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
@@ -56,12 +200,6 @@ function createGetter(isReadonly = false, isShallow = false) {
 
     return res;
   };
-}
-
-export const TriggerType = {
-  SET: 'SET',
-  ADD: 'ADD',
-  DELETE: 'DELETE'
 }
 
 function createSetter() {
@@ -100,7 +238,6 @@ function has(target, key) {
 }
 
 /* for...in: 使用 ownKeys */
-export const ITERATE_KEY = Symbol();
 function ownKeys(target) {
   /* 遍历数组只需要监听数组长度变化 */
   const key = Array.isArray(target) ? 'length' : ITERATE_KEY
