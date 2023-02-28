@@ -57,13 +57,11 @@ const obj1 = {};
 const proto = { bar: 1 }
 const child = reactive(obj1);
 const parent = reactive(proto);
-/* 将 parent 设置为 child 的原型 */
-/* 只需要收集一个响应就好，避免重复调用 */
 Object.setPrototypeOf(child, parent);
 
-effect (() => {
-  console.log(child.bar);
-})
+// effect (() => {
+//   console.log(child.bar);
+// })
 
-child.bar = 2;
+// child.bar = 2;
 
